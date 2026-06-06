@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: strong_password
+      POSTGRES_USER: gonza
+      POSTGRES_DB: marketplace
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
