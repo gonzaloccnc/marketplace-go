@@ -2,6 +2,7 @@ package product
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 )
@@ -40,3 +41,12 @@ type ProductService interface {
 	GetProduct(ctx context.Context, id uuid.UUID) (*ProductDTO, error)
 	CreateProduct(ctx context.Context, product ProductRequest) (*ProductDTO, error)
 }
+
+var (
+	ErrProductNotFound      = errors.New("product not found")
+	ErrProductAlreadyExists = errors.New("product already exists")
+	ErrInvalidProduct       = errors.New("invalid product")
+	ErrProductNotAvailable  = errors.New("product not available")
+	ErrProductOutOfStock    = errors.New("product out of stock")
+	ErrProductNotInStock    = errors.New("product not in stock")
+)

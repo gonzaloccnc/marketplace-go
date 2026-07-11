@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type HTTPProductHandler struct {
@@ -57,7 +56,7 @@ func (h *HTTPProductHandler) GetProductById(c *gin.Context) {
 	product, err := h.service.GetProduct(c.Request.Context(), id)
 	if err != nil {
 		slog.Error("failed to get product by id", "error", err)
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrProductNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":   "product not found",
 				"status":  http.StatusNotFound,

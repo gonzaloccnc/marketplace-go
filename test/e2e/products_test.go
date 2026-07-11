@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -67,6 +70,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to run migrations: %v\n", err)
 		os.Exit(1)
 	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	slog.SetDefault(logger)
 
 	gin.SetMode(gin.TestMode)
 	testRouter = gin.New()
@@ -159,5 +165,41 @@ func TestGetProductsEmpty(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("got %d products, want 0", len(got))
+	}
+}
+
+func TestGetProductByID(t *testing.T) {
+	resetProducts(t)
+
+	id1 := seedProduct(t, "Keyboard", 49.99, 10, map[string]string{"color": "black"})
+
+	req := httptest.NewRequest(http.MethodGet, "/products/"+id1, nil)
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got product.ProductDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response body: %v", err)
+	}
+	if got.ID != id1 {
+		t.Errorf("got product ID %s, want %s", got.ID, id1)
+	}
+
+}
+
+func TestGetProductByIDNotFound(t *testing.T) {
+	resetProducts(t)
+
+	id1 := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/products/"+id1, nil)
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status code = %d, want %d (body: %s)", rec.Code, http.StatusNotFound, rec.Body.String())
 	}
 }

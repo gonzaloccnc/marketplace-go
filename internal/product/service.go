@@ -2,8 +2,10 @@ package product
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type ProductServiceImpl struct {
@@ -39,6 +41,9 @@ func (s *ProductServiceImpl) GetProduct(ctx context.Context, id uuid.UUID) (*Pro
 	product, err := s.repository.GetProduct(ctx, id)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrProductNotFound
+		}
 		return nil, err
 	}
 
