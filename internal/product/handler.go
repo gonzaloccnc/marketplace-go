@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gonzaloccnc/marketplace-go/pkg/httpx"
 	"github.com/google/uuid"
 )
 
@@ -21,11 +22,11 @@ func (h *HTTPProductHandler) GetProducts(c *gin.Context) {
 	products, err := h.service.GetProducts(c.Request.Context())
 	if err != nil {
 		slog.Error("failed to get products", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		httpx.WriteError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	c.JSON(http.StatusOK, products)
+	httpx.WriteSuccess(c, http.StatusOK, products)
 }
 
 func (h *HTTPProductHandler) GetProductById(c *gin.Context) {
@@ -35,21 +36,13 @@ func (h *HTTPProductHandler) GetProductById(c *gin.Context) {
 
 	if err := c.ShouldBindUri(&uri); err != nil {
 		slog.Error("failed to bind uri", "error", err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid id, must be uuid",
-			"status":  http.StatusBadRequest,
-			"message": http.StatusText(http.StatusBadRequest),
-		})
+		httpx.WriteError(c, http.StatusBadRequest, "invalid id, must be uuid")
 		return
 	}
 
 	id, err := uuid.Parse(uri.ID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid id, must be uuid",
-			"status":  http.StatusBadRequest,
-			"message": http.StatusText(http.StatusBadRequest),
-		})
+		httpx.WriteError(c, http.StatusBadRequest, "invalid id, must be uuid")
 		return
 	}
 
@@ -57,47 +50,31 @@ func (h *HTTPProductHandler) GetProductById(c *gin.Context) {
 	if err != nil {
 		slog.Error("failed to get product by id", "error", err)
 		if errors.Is(err, ErrProductNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "product not found",
-				"status":  http.StatusNotFound,
-				"message": http.StatusText(http.StatusNotFound),
-			})
+			httpx.WriteError(c, http.StatusNotFound, "product not found")
 			return
 		}
 
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "internal server error",
-			"status":  http.StatusInternalServerError,
-			"message": http.StatusText(http.StatusInternalServerError),
-		})
+		httpx.WriteError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	c.JSON(http.StatusOK, product)
+	httpx.WriteSuccess(c, http.StatusOK, product)
 }
 
 func (h *HTTPProductHandler) CreateProduct(c *gin.Context) {
 	var product ProductRequest
 	if err := c.ShouldBind(&product); err != nil {
 		slog.Error("failed to bind product", "error", err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid product",
-			"status":  http.StatusBadRequest,
-			"message": http.StatusText(http.StatusBadRequest),
-		})
+		httpx.WriteBindError(c, err)
 		return
 	}
 
 	productCreated, err := h.service.CreateProduct(c.Request.Context(), product)
 	if err != nil {
 		slog.Error("failed to create product", "error", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "failed to create product",
-			"status":  http.StatusInternalServerError,
-			"message": http.StatusText(http.StatusInternalServerError),
-		})
+		httpx.WriteError(c, http.StatusInternalServerError, "failed to create product")
 		return
 	}
 
-	c.JSON(http.StatusCreated, productCreated)
+	httpx.WriteSuccess(c, http.StatusCreated, productCreated)
 }

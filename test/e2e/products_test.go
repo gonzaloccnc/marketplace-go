@@ -81,6 +81,21 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// decodeData unmarshals the "data" field of the standard httpx.ApiResponse
+// envelope ({"status":..., "data":...}) into v.
+func decodeData(t *testing.T, body []byte, v any) {
+	t.Helper()
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatalf("failed to unmarshal envelope: %v", err)
+	}
+	if err := json.Unmarshal(env.Data, v); err != nil {
+		t.Fatalf("failed to unmarshal data: %v", err)
+	}
+}
+
 // resetProducts empties the products table so each test starts from a known state.
 func resetProducts(t *testing.T) {
 	t.Helper()
@@ -118,9 +133,7 @@ func TestGetProducts(t *testing.T) {
 	}
 
 	var got []product.ProductDTO
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("failed to unmarshal response body: %v", err)
-	}
+	decodeData(t, rec.Body.Bytes(), &got)
 
 	if len(got) != 2 {
 		t.Fatalf("got %d products, want 2", len(got))
@@ -160,9 +173,7 @@ func TestGetProductsEmpty(t *testing.T) {
 	}
 
 	var got []product.ProductDTO
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("failed to unmarshal response body: %v", err)
-	}
+	decodeData(t, rec.Body.Bytes(), &got)
 	if len(got) != 0 {
 		t.Errorf("got %d products, want 0", len(got))
 	}
@@ -182,9 +193,7 @@ func TestGetProductByID(t *testing.T) {
 	}
 
 	var got product.ProductDTO
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("failed to unmarshal response body: %v", err)
-	}
+	decodeData(t, rec.Body.Bytes(), &got)
 	if got.ID != id1 {
 		t.Errorf("got product ID %s, want %s", got.ID, id1)
 	}
