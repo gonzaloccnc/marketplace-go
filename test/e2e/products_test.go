@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -210,5 +211,165 @@ func TestGetProductByIDNotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status code = %d, want %d (body: %s)", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
+// updateProduct sends a PUT /products/:id with the given JSON body.
+func updateProduct(t *testing.T, id, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPut, "/products/"+id, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestUpdateProduct(t *testing.T) {
+	resetProducts(t)
+	id := seedProduct(t, "Keyboard", 49.99, 10, map[string]string{"color": "black"})
+
+	rec := updateProduct(t, id, `{"name":"Keyboard Pro","price":79.5,"stock":3,"attributes":{"color":"red"}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got product.ProductDTO
+	decodeData(t, rec.Body.Bytes(), &got)
+	if got.ID != id || got.Name != "Keyboard Pro" || got.Price != 79.5 || got.Stock != 3 || got.Attributes["color"] != "red" {
+		t.Errorf("updated product = %+v, unexpected fields", got)
+	}
+	if got.State != product.ProductStateActive {
+		t.Errorf("state = %q, want %q (state omitted must be kept)", got.State, product.ProductStateActive)
+	}
+}
+
+func TestUpdateProductChangesState(t *testing.T) {
+	resetProducts(t)
+	id := seedProduct(t, "Keyboard", 49.99, 10, map[string]string{"color": "black"})
+
+	rec := updateProduct(t, id, `{"name":"Keyboard","price":49.99,"stock":10,"attributes":{"color":"black"},"state":"I"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got product.ProductDTO
+	decodeData(t, rec.Body.Bytes(), &got)
+	if got.State != product.ProductStateInactive {
+		t.Errorf("state = %q, want %q", got.State, product.ProductStateInactive)
+	}
+}
+
+func TestUpdateProductErrors(t *testing.T) {
+	resetProducts(t)
+	id := seedProduct(t, "Keyboard", 49.99, 10, map[string]string{"color": "black"})
+
+	tests := []struct {
+		name string
+		id   string
+		body string
+		want int
+	}{
+		{"not found", uuid.New().String(), `{"name":"x","price":1,"stock":1,"attributes":{}}`, http.StatusNotFound},
+		{"invalid id", "not-a-uuid", `{"name":"x","price":1,"stock":1,"attributes":{}}`, http.StatusBadRequest},
+		{"zero stock", id, `{"name":"x","price":1,"stock":0,"attributes":{}}`, http.StatusBadRequest},
+		{"negative stock", id, `{"name":"x","price":1,"stock":-5,"attributes":{}}`, http.StatusBadRequest},
+		{"invalid state", id, `{"name":"x","price":1,"stock":1,"attributes":{},"state":"X"}`, http.StatusBadRequest},
+		{"zero price", id, `{"name":"x","price":0,"stock":1,"attributes":{}}`, http.StatusBadRequest},
+		{"missing name", id, `{"price":1,"stock":1,"attributes":{}}`, http.StatusBadRequest},
+		{"malformed json", id, `{"name":`, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := updateProduct(t, tt.id, tt.body)
+			if rec.Code != tt.want {
+				t.Errorf("status code = %d, want %d (body: %s)", rec.Code, tt.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+// inactiveProduct sends a PATCH /products/:id/inactive.
+func inactiveProduct(t *testing.T, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPatch, "/products/"+id+"/inactive", nil)
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestInactiveProduct(t *testing.T) {
+	resetProducts(t)
+	id := seedProduct(t, "Keyboard", 49.99, 10, map[string]string{"color": "black"})
+
+	rec := inactiveProduct(t, id)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got product.ProductDTO
+	decodeData(t, rec.Body.Bytes(), &got)
+	if got.ID != id || got.State != product.ProductStateInactive {
+		t.Errorf("inactivated product = %+v, want id %s with state %q", got, id, product.ProductStateInactive)
+	}
+
+	// a second call must report that the product is already inactive
+	rec = inactiveProduct(t, id)
+	if rec.Code != http.StatusConflict {
+		t.Errorf("second call status code = %d, want %d (body: %s)", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+}
+
+func TestInactiveProductErrors(t *testing.T) {
+	resetProducts(t)
+
+	tests := []struct {
+		name string
+		id   string
+		want int
+	}{
+		{"not found", uuid.New().String(), http.StatusNotFound},
+		{"invalid id", "not-a-uuid", http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := inactiveProduct(t, tt.id)
+			if rec.Code != tt.want {
+				t.Errorf("status code = %d, want %d (body: %s)", rec.Code, tt.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestGetProductsExcludesInactive(t *testing.T) {
+	resetProducts(t)
+	activeID := seedProduct(t, "Keyboard", 49.99, 10, map[string]string{"color": "black"})
+	inactiveID := seedProduct(t, "Mouse", 19.99, 5, map[string]string{"color": "white"})
+
+	if rec := inactiveProduct(t, inactiveID); rec.Code != http.StatusOK {
+		t.Fatalf("inactive status code = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/products", nil)
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got []product.ProductDTO
+	decodeData(t, rec.Body.Bytes(), &got)
+	if len(got) != 1 || got[0].ID != activeID {
+		t.Errorf("got %+v, want only the active product %s", got, activeID)
+	}
+
+	// the inactive product is still reachable by id so it can be reactivated
+	req = httptest.NewRequest(http.MethodGet, "/products/"+inactiveID, nil)
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("get inactive by id status code = %d, want %d", rec.Code, http.StatusOK)
 	}
 }

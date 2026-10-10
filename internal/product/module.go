@@ -16,4 +16,6 @@ func Register(r gin.IRouter, pool *pgxpool.Pool) {
 	productsGroup.GET("", handler.GetProducts)
 	productsGroup.GET("/:id", handler.GetProductById)
 	productsGroup.POST("", handler.CreateProduct)
+	productsGroup.PUT("/:id", handler.UpdateProduct)
+	productsGroup.DELETE("/:id", handler.InactiveProduct)
 }

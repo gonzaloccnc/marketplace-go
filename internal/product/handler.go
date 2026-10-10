@@ -78,3 +78,73 @@ func (h *HTTPProductHandler) CreateProduct(c *gin.Context) {
 
 	httpx.WriteSuccess(c, http.StatusCreated, productCreated)
 }
+
+func (h *HTTPProductHandler) UpdateProduct(c *gin.Context) {
+	var uri struct {
+		ID string `uri:"id" binding:"required,uuid"`
+	}
+
+	if err := c.ShouldBindUri(&uri); err != nil {
+		slog.Error("failed to bind uri", "error", err.Error())
+		httpx.WriteError(c, http.StatusBadRequest, "invalid id, must be uuid")
+		return
+	}
+
+	id, err := uuid.Parse(uri.ID)
+	if err != nil {
+		httpx.WriteError(c, http.StatusBadRequest, "invalid id, must be uuid")
+		return
+	}
+
+	var product UpdateProductRequest
+	if err := c.ShouldBind(&product); err != nil {
+		slog.Error("failed to bind product", "error", err.Error())
+		httpx.WriteBindError(c, err)
+		return
+	}
+
+	productUpdated, err := h.service.UpdateProduct(c.Request.Context(), id, product)
+	if err != nil {
+		slog.Error("failed to update product", "error", err.Error())
+
+		switch {
+		case errors.Is(err, ErrProductNotFound):
+			httpx.WriteError(c, http.StatusNotFound, err.Error())
+		case errors.Is(err, ErrInvalidProductStock), errors.Is(err, ErrInvalidProductState):
+			httpx.WriteError(c, http.StatusBadRequest, err.Error())
+		default:
+			httpx.WriteError(c, http.StatusInternalServerError, "failed to update product")
+		}
+		return
+	}
+
+	httpx.WriteSuccess(c, http.StatusOK, productUpdated)
+}
+
+func (h *HTTPProductHandler) InactiveProduct(c *gin.Context) {
+	idParam := c.Param("id")
+	idProduct, err := uuid.Parse(idParam)
+	if err != nil {
+		slog.Error("failed to parse uuid", "error", err.Error())
+		httpx.WriteError(c, http.StatusBadRequest, "invalid id, must be uuid")
+		return
+	}
+
+	productInactive, err := h.service.InactiveProduct(c.Request.Context(), idProduct)
+
+	if err != nil {
+		slog.Error("failed to inactive product", "error", err.Error())
+
+		switch {
+		case errors.Is(err, ErrProductNotFound):
+			httpx.WriteError(c, http.StatusNotFound, err.Error())
+		case errors.Is(err, ErrProductIsAlreadyInactive):
+			httpx.WriteError(c, http.StatusConflict, err.Error())
+		default:
+			httpx.WriteError(c, http.StatusInternalServerError, "failed to inactive product")
+		}
+		return
+	}
+
+	httpx.WriteSuccess(c, http.StatusOK, productInactive)
+}

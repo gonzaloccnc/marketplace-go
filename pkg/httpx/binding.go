@@ -79,6 +79,10 @@ func messageForTag(fe validator.FieldError) string {
 		return "must be at most " + fe.Param() + " characters"
 	case "uuid":
 		return "must be a valid uuid"
+	case "gt":
+		return "must be greater than " + fe.Param()
+	case "oneof":
+		return "must be one of: " + fe.Param()
 	default:
 		return "invalid value"
 	}
